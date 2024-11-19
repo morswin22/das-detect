@@ -202,4 +202,55 @@ imshow(cv2.drawKeypoints(skeleton_img, kp, None, flags=cv2.DRAW_MATCHES_FLAGS_DE
 imshow(cv2.drawKeypoints(img_bgr, kp, None, flags=cv2.DRAW_MATCHES_FLAGS_DEFAULT))
 
 # %%
+# Data
+kp_data = {"x":[], "y":[]}
+for key_point in kp:
+    kp_data["x"].append(key_point.pt[0])
+    kp_data["y"].append(key_point.pt[1])
+
+# Convert data to DataFrame for easier manipulation
+kp_df = pd.DataFrame(kp_data)
+
+# %%
+from scipy.optimize import minimize
+
+# Parameters
+num_lines = 5
+
+# Define the objective function for Least Squares Regression with multiple lines
+def least_squares(params):
+    a = params[:2 * num_lines].reshape(num_lines, -1)   # Coefficients for each line
+    residuals = []
+
+    for i in range(len(kp_df)):
+        line_fit = np.array([a[j][0] + a[j][1] * kp_df['x'][i] for j in range(num_lines)])
+        residuals.append(np.min(np.abs(kp_df['y'][i] - line_fit)))   # Min residual among lines
+
+    return np.sum(np.square(residuals))
+
+# Initial guesses for coefficients (intercept and slope for each line)
+initial_guess_ls = np.zeros(2 * num_lines)
+
+# Optimize using minimize from scipy
+result_ls = minimize(least_squares, initial_guess_ls)
+coefficients_ls = result_ls.x.reshape(num_lines, -1)
+
+# Plotting the results
+plt.figure(figsize=(9,12))
+plt.scatter(kp_df['x'], kp_df['y'], color='blue', label='Data Points')
+
+# Plotting Least Squares Lines
+x_values = np.linspace(kp_df['x'].min(), kp_df['x'].max(), num=100)
+for i in range(num_lines):
+    ls_y_values = coefficients_ls[i][0] + coefficients_ls[i][1] * x_values
+    plt.plot(x_values, ls_y_values, label=f'Least Squares Line {i+1}', linewidth=2)
+
+# Adding labels and title
+plt.title('Multiple-Line Regression: Least Squares')
+plt.xlabel('X Values')
+plt.ylabel('Y Values')
+plt.ylim(kp_df['y'].min() - 1, kp_df['y'].max() + 1)
+plt.legend()
+plt.grid()
+plt.show()
 
