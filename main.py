@@ -212,10 +212,69 @@ for key_point in kp:
 kp_df = pd.DataFrame(kp_data)
 
 # %%
+from scipy import stats
+
+fig, axs = plt.subplots(1, 2, sharex=True, tight_layout=True)
+
+axs[0].hist(kp_df["y"], bins=50)
+
+x = np.arange(kp_df["y"].min(), kp_df["y"].max(), 0.1)
+y = stats.gaussian_kde(kp_df["y"])(x)
+axs[1].plot(x, y)
+
+plt.show()
+
+# %%
+def cvconv(f, g):
+    # padding
+    pad_v = (g.shape[0] - 1) // 2
+    pad_h = (g.shape[1] - 1) // 2
+    fb = cv2.copyMakeBorder(f, pad_v, pad_v, pad_h, pad_h, cv2.BORDER_CONSTANT, 0)
+
+    g = np.flip(g)
+
+    # convolution
+    fg_cv = cv2.filter2D(fb.astype(g.dtype), -1, g)
+
+    # remove padding from result (opencv does not do this automatically)
+    return fg_cv[pad_v : fb.shape[0] - pad_v, pad_h : fb.shape[1] - pad_h]
+
+der = np.array([[-1, 1]], np.float32)
+
+y_hat = cvconv(y[np.newaxis], der) / (x[1] - x[0])
+y_hat = y_hat[0]
+
+where = abs(y_hat) < 0.000000003
+extremes = x[where]
+extremes
+
+# %%
+extremes = extremes[y_hat[where] <= 0]
+extremes
+
+# %%
+from sklearn.neighbors import KernelDensity
+from scipy.signal import argrelextrema
+
+a = extremes.reshape(-1, 1)
+kde = KernelDensity(kernel='gaussian', bandwidth=3).fit(a)
+s = np.linspace(a.min(), a.max())
+e = kde.score_samples(s.reshape(-1,1))
+
+mi = argrelextrema(e, np.less)[0]
+
+segments = [a[(a >= left) * (a <= right)] for left, right in zip((s[0],) + tuple(s[mi]), tuple(s[mi]) + (s[-1],))]
+segments
+
+# %%
+initial_guess_ls = np.array([[segment.mean(), 0] for segment in segments]).reshape(-1)
+initial_guess_ls
+
+# %%
 from scipy.optimize import minimize
 
 # Parameters
-num_lines = 5
+num_lines = len(segments)
 
 # Define the objective function for Least Squares Regression with multiple lines
 def least_squares(params):
@@ -227,9 +286,6 @@ def least_squares(params):
         residuals.append(np.min(np.abs(kp_df['y'][i] - line_fit)))   # Min residual among lines
 
     return np.sum(np.square(residuals))
-
-# Initial guesses for coefficients (intercept and slope for each line)
-initial_guess_ls = np.zeros(2 * num_lines)
 
 # Optimize using minimize from scipy
 result_ls = minimize(least_squares, initial_guess_ls)
