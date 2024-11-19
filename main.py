@@ -92,8 +92,8 @@ def imshow(image):
     cv2.waitKey()
     cv2.destroyAllWindows()
 
-img = cv2.cvtColor(img_rgba, cv2.COLOR_RGBA2BGR)
-imshow(img)
+img_bgr = cv2.cvtColor(img_rgba, cv2.COLOR_RGBA2BGR)
+imshow(img_bgr)
 
 # %%
 # grayscale
@@ -176,4 +176,30 @@ show_binary(skeleton)
 # %%
 skeleton_img = (skeleton * 255).astype(np.uint8)
 imshow(skeleton_img)
+
+# %%
+descriptor = cv2.ORB_create()
+
+kp, desc = descriptor.detectAndCompute(skeleton_img, None)
+
+imshow(cv2.drawKeypoints(skeleton_img, kp, None, flags=cv2.DRAW_MATCHES_FLAGS_DEFAULT))
+imshow(cv2.drawKeypoints(img_bgr, kp, None, flags=cv2.DRAW_MATCHES_FLAGS_DEFAULT))
+
+# %%
+descriptor = cv2.SIFT_create()
+
+kp, desc = descriptor.detectAndCompute(skeleton_img, None)
+
+imshow(cv2.drawKeypoints(skeleton_img, kp, None, flags=cv2.DRAW_MATCHES_FLAGS_DEFAULT))
+imshow(cv2.drawKeypoints(img_bgr, kp, None, flags=cv2.DRAW_MATCHES_FLAGS_DEFAULT))
+
+# %%
+descriptor = cv2.FastFeatureDetector_create()
+
+kp = descriptor.detect(skeleton_img, None)
+
+imshow(cv2.drawKeypoints(skeleton_img, kp, None, flags=cv2.DRAW_MATCHES_FLAGS_DEFAULT))
+imshow(cv2.drawKeypoints(img_bgr, kp, None, flags=cv2.DRAW_MATCHES_FLAGS_DEFAULT))
+
+# %%
 
