@@ -121,7 +121,12 @@ img_Q = proper_closing(img, struct)
 imshow(np.concatenate([img, img_Q], 1))
 
 # %%
-img_binary = img_Q.copy()
+img_Q_blurred = cv2.blur(img_Q, (10, 10))
+
+imshow(np.concatenate([img_Q, img_Q_blurred], 1))
+
+# %%
+img_binary = img_Q_blurred.copy()
 img_binary[img_binary.nonzero()] = 1
 img_binary = img_binary.astype(bool)
 
