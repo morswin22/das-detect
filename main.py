@@ -174,12 +174,6 @@ def show_binary(a):
 show_binary(skeleton)
 
 # %%
-skeleton_img = skeleton.astype(np.int8)
-imshow(skeleton_img) # TODO how to go back from skeleton to cv2?
-
-# %%
-skeleton_Q = proper_closing(skeleton.astype(np.int8) * 255, struct)
-imshow(skeleton_Q)
-skeleton_Q
-# %%
+skeleton_img = (skeleton * 255).astype(np.uint8)
+imshow(skeleton_img)
 
