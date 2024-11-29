@@ -249,6 +249,115 @@ def imshow(img, lines=[]):
     im = ax.imshow(img,interpolation='none',aspect='auto',norm=norm)
 
     x_values = np.linspace(0, img.shape[1], num=100)
+    if lines is not None:
+        for i in range(0, len(lines)):
+            l = lines[i][0]
+            ax.plot([l[0], l[2]], [l[1], l[3]], color="red")
+
+    plt.ylabel('time')
+    plt.xlabel('space [m]')
+
+    cax = fig.add_axes([ax.get_position().x1+0.06,ax.get_position().y0,0.02,ax.get_position().height])
+    plt.colorbar(im, cax=cax)
+    x_positions, x_labels = set_axis(df.columns)
+    ax.set_xticks(x_positions, np.round(x_labels))
+    y_positions, y_labels = set_axis(df.index.time)
+    ax.set_yticks(y_positions, y_labels)
+    plt.show()
+
+max_theta = 0.01
+lines = cv2.HoughLinesP(img_filtered, rho=1, theta=np.pi/180, threshold=90, lines=None, minLineLength=100, maxLineGap=100)# min_theta=-max_theta, max_theta=max_theta)
+
+imshow(img_filtered, lines)
+
+# %%
+def imshow(img, lines=[]):
+    fig = plt.figure(figsize=(12,16))
+    ax = plt.axes()
+
+    norm = Normalize(vmin=0, vmax=255, clip=True)
+
+    im = ax.imshow(img,interpolation='none',aspect='auto',norm=norm)
+
+    x_values = np.linspace(0, img.shape[1], num=100)
+    if lines is not None:
+        for i in range(0, len(lines)):
+            l = lines[i][0]
+            ax.plot([l[0], l[2]], [l[1], l[3]], color="red")
+
+    plt.ylabel('time')
+    plt.xlabel('space [m]')
+
+    cax = fig.add_axes([ax.get_position().x1+0.06,ax.get_position().y0,0.02,ax.get_position().height])
+    plt.colorbar(im, cax=cax)
+    x_positions, x_labels = set_axis(df.columns)
+    ax.set_xticks(x_positions, np.round(x_labels))
+    # y_positions, y_labels = set_axis(df.index.time)
+    # ax.set_yticks(y_positions, y_labels)
+    plt.show()
+
+img_downsampled = cv2.resize(img_filtered, (150, 52), interpolation=cv2.INTER_AREA)
+imshow(img_downsampled)
+
+# %%
+lines = cv2.HoughLinesP(img_downsampled, rho=1, theta=np.pi/180, threshold=80, lines=None, minLineLength=8, maxLineGap=16)# min_theta=-max_theta, max_theta=max_theta)
+imshow(img_downsampled, lines)
+
+# %%
+# import sympy as sp
+#
+# x, a1, b1, a2, b2, min, max = sp.symbols("x, a1, b1, a2, b2, min, max")
+#
+# sp.simplify(sp.integrate(a1*x + b1 - (a2*x + b2), (x, min, max)))
+
+# %%
+def calc_area(a1, b1, a2, b2, min, max):
+    assert min < max
+    return max**2 * (a1 - a2)/2 + max*(b1 - b2) + min**2 * (-a1 + a2)/2 - min*(b1 - b2)
+
+def calculate_slope_and_intercept(x1, y1, x2, y2):
+        # Calculate the slope (a)
+        a = (y2 - y1) / (x2 - x1) if (x2 - x1) != 0 else float('inf')  # Handle vertical line
+        # Calculate the y-intercept (b)
+        b = y1 - a * x1
+        return a, b
+
+to_remove = set()
+for i in range(len(lines)):
+    x1, y1, x2, y2 = lines[i][0]
+    max_i = max(x1, x2)
+    min_i = min(x1, x2)
+    a, b = calculate_slope_and_intercept(x1, y1, x2, y2)
+    areas = []
+    for j in range(i + 1, len(lines)):
+        x3, y3, x4, y4 = lines[j][0]
+        c, d = calculate_slope_and_intercept(x3, y3, x4, y4)
+        max_j = max(x3, x4)
+        min_j = min(x3, x4)
+        max_x = min(max_i, max_j)
+        min_x = max(min_i, min_j)
+        # TODO: check if lines intersect and when they do
+        # cut the lines in the intersection point P
+        # and calculate between <min;P> and <P;max>
+        areas.append(calc_area(a, b, c, d, min_x, max_x))
+    # TODO: for lines that are closer than threshold T,
+    # remove the line that is shorter (IDEA: maybe merge the lines?)
+    # areas = [area for area in areas if area < T]
+    # to_remove.add(...)
+
+lines = np.delete(lines, to_remove, axis=1)
+imshow(img_downsampled, lines)
+
+# %%
+def imshow(img, lines=[]):
+    fig = plt.figure(figsize=(12,16))
+    ax = plt.axes()
+
+    norm = Normalize(vmin=0, vmax=255, clip=True)
+
+    im = ax.imshow(img,interpolation='none',aspect='auto',norm=norm)
+
+    x_values = np.linspace(0, img.shape[1], num=100)
     for intercept, slope in lines:
         ls_y_values = intercept + slope * x_values
         ax.plot(x_values, np.clip(ls_y_values, 0, img.shape[0]), color="red", linewidth=2)
