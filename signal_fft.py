@@ -68,6 +68,178 @@ img = img.astype(np.uint8)
 img
 
 # %%
+import PIL
+
+def imshow(img, lines=[]):
+    fig = plt.figure(figsize=(12,16))
+    ax = plt.axes()
+
+    norm = Normalize(vmin=0, vmax=255, clip=True)
+
+    im = ax.imshow(img,interpolation='none',aspect='auto',norm=norm)
+
+    x_values = np.linspace(0, img.shape[1], num=100)
+    for intercept, slope in lines:
+        ls_y_values = intercept + slope * x_values
+        ax.plot(x_values, np.clip(ls_y_values, 0, img.shape[0]), color="red", linewidth=2)
+
+    plt.ylabel('time')
+    plt.xlabel('space [m]')
+
+    cax = fig.add_axes([ax.get_position().x1+0.06,ax.get_position().y0,0.02,ax.get_position().height])
+    plt.colorbar(im, cax=cax)
+    x_positions, x_labels = set_axis(df.columns)
+    ax.set_xticks(x_positions, np.round(x_labels))
+    y_positions, y_labels = set_axis(df.index.time)
+    ax.set_yticks(y_positions, y_labels)
+    plt.show()
+
+def fft(img, size=None):
+    f = np.fft.fft2(img, size)
+    fshift = np.fft.fftshift(f)
+    spectrum = 20 * np.log(np.abs(fshift) + 1)
+    return fshift, spectrum
+
+def ifft(fshift):
+    f_ishift = np.fft.ifftshift(fshift)
+    img_back = np.fft.ifft2(f_ishift)
+    return np.real(img_back)
+
+def get_mask(shape, div):
+    mask = np.zeros(shape, np.float32)
+    center_row, center_col = shape[0] // 2, shape[1] // 2
+
+    rows_scale = shape[0] / max(shape)
+    cols_scale = shape[1] / max(shape)
+    axes = (int(center_col / div / cols_scale), int(center_row / div / rows_scale))
+
+    mask = cv2.ellipse(mask, (center_col, center_row), axes, 0, 0, 360, 1, -1)
+    return mask
+
+def create_frequency_mask(shape, freq_min, freq_max):
+    rows, cols = shape
+    center_row, center_col = rows // 2, cols // 2
+    Y, X = np.ogrid[:rows, :cols]
+    dist_from_center = np.sqrt((X - center_col)**2 + (Y - center_row)**2)
+
+    mask = np.logical_and(freq_min <= dist_from_center, dist_from_center <= freq_max)
+    return mask.astype(np.float32)
+
+fshift, spectrum = fft(img)
+
+
+# Using create_frequency_mask
+low_pass_mask = create_frequency_mask(img.shape, 0, 30)
+high_pass_mask = 1 - create_frequency_mask(img.shape, 0, 50)
+
+# This one may be also interesting if played with parameters
+both_pass_mask = create_frequency_mask(img.shape, 10, 50)
+
+low_pass_fshift = fshift * low_pass_mask
+high_pass_fshift = fshift * high_pass_mask
+both_pass_fshift = fshift * both_pass_mask
+
+
+low_pass_img = ifft(low_pass_fshift)
+high_pass_img = ifft(high_pass_fshift)
+both_pass_img = ifft(both_pass_fshift)
+
+imshow(np.concatenate([low_pass_img, high_pass_img, both_pass_img], 1))
+
+
+# Using get_mask
+low_pass_mask = get_mask(img.shape, 2000)
+high_pass_mask = 1 - get_mask(img.shape, 2000)
+
+low_pass_fshift = low_pass_mask * fshift
+high_pass_fshift = high_pass_mask * fshift
+both_pass_fshift = high_pass_mask * fshift * low_pass_mask
+
+
+low_pass_fshift_img = ifft(low_pass_fshift)
+high_pass_fshift_img = ifft(high_pass_fshift)
+both_pass_fshift_img = ifft(both_pass_fshift)
+
+imshow(np.concatenate([low_pass_fshift_img, high_pass_fshift_img, both_pass_fshift_img], 1))
+
+# %%
+mod_fshift = fshift.copy()
+mod_fshift[0:35000] = 0
+
+mask_1 = create_frequency_mask(img.shape, 1, 30)
+mask_2 = create_frequency_mask(img.shape, 1, 30)
+
+mask_1_fshift = mask_1 * mod_fshift
+mask_2_fshift = mask_2 * mod_fshift
+both_pass_fshift = (mask_1_fshift + mask_2_fshift)
+
+
+mask_1_fshift_img = ifft(mask_1_fshift)
+mask_2_fshift_img = ifft(mask_2_fshift)
+both_pass_fshift_img = ifft(both_pass_fshift)
+
+imshow(np.concatenate([mask_1_fshift_img, mask_2_fshift_img, both_pass_fshift_img], 1))
+
+# %%
+def draw_hough_lines(img, lines, rho_res=1, theta_res=np.pi/180):
+    img_with_lines = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR) if img.ndim == 2 else img.copy()
+
+    for line in lines:
+        for rho, theta in line:
+            a = np.cos(theta)
+            b = np.sin(theta)
+            x0 = a * rho
+            y0 = b * rho
+            x1 = int(x0 + 1000 * (-b))
+            y1 = int(y0 + 1000 * a)
+            x2 = int(x0 - 1000 * (-b))
+            y2 = int(y0 - 1000 * a)
+            cv2.line(img_with_lines, (x1, y1), (x2, y2), (0, 0, 255), 2)
+
+    return img_with_lines
+
+def map_hough_lines_to_imshow_lines(hough_lines):
+    lines_mapped = []
+
+    for rho, theta in hough_lines[:, 0]:
+            a = np.cos(theta)
+            b = np.sin(theta)
+            if b != 0:  # Avoid division by zero
+                slope = -a / b  # Slope
+                intercept = rho / b  # Intercept
+                lines_mapped.append((intercept, slope))
+
+    return lines_mapped
+
+img_filtered = both_pass_fshift_img.clip(0, 255).astype(np.uint8)
+# img_filtered = cv2.GaussianBlur(img_filtered, (5, 5), 0)
+
+# Does not displayed correctly on imshow
+img_copy = img_filtered[::200, :]
+
+imshow(img_filtered)
+
+# Apply edge detection (Canny)
+edges = cv2.Canny(img_filtered, 50, 110)
+
+kernel = np.ones((5, 5), np.uint8)
+edges = cv2.morphologyEx(edges, cv2.MORPH_CLOSE, kernel)
+
+imshow(edges)
+
+edges = edges[::200, :]
+
+# Detect Hough lines
+
+lines = cv2.HoughLines(edges, rho=1, theta=np.pi/180, threshold=100)
+
+if lines is not None:
+    img_with_long_lines = draw_hough_lines(img_filtered, lines)
+    imshow(img_with_long_lines)
+else:
+    print("No lines detected")
+
+# %%
 def imshow(img, lines=[]):
     fig = plt.figure(figsize=(12,16))
     ax = plt.axes()
@@ -93,12 +265,6 @@ def imshow(img, lines=[]):
     plt.show()
 
 imshow(img)
-
-# %%
-img_grayscale = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-f = np.fft.fft2(img_grayscale)
-fshift = np.fft.fftshift(f)
-magnitude_spectrum = 20 * np.log(np.abs(fshift))
 
 # %%
 slice_idx = int(0.27 * img.shape[0])
