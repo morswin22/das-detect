@@ -403,6 +403,38 @@ lines = remove_duplicates(lines, 3)
 imshow(img_downsampled, lines)
 
 # %%
+def imshow(img, lines=[], lines_scale=np.ones(shape=(2,))):
+    fig = plt.figure(figsize=(12,16))
+    ax = plt.axes()
+
+    norm = Normalize(vmin=0, vmax=255, clip=True)
+
+    im = ax.imshow(img,interpolation='none',aspect='auto',norm=norm)
+
+    if lines is not None:
+        for i in range(0, len(lines)):
+            l = lines[i][0]
+            a, b = calculate_slope_and_intercept(*l)
+            speed = float("inf") if a == 0 else abs(1/a*lines_scale[1]/lines_scale[0]*DX/DT) * 3.6
+            if speed > 300: # nobody would drive this fast
+                continue
+            ax.text(l[0] * lines_scale[1], l[1] * lines_scale[0], f"{round(speed, 2)} km/h", color="red", horizontalalignment="center", verticalalignment="top")
+            ax.plot([l[0] * lines_scale[1], l[2] * lines_scale[1]], [l[1] * lines_scale[0], l[3] * lines_scale[0]], color="red")
+
+    plt.ylabel('time')
+    plt.xlabel('space [m]')
+
+    cax = fig.add_axes([ax.get_position().x1+0.06,ax.get_position().y0,0.02,ax.get_position().height])
+    plt.colorbar(im, cax=cax)
+    x_positions, x_labels = set_axis(df.columns)
+    ax.set_xticks(x_positions, np.round(x_labels))
+    y_positions, y_labels = set_axis(df.index.time)
+    ax.set_yticks(y_positions, y_labels)
+    plt.show()
+
+imshow(img, lines, np.array(img.shape) / np.array(img_downsampled.shape))
+
+# %%
 def imshow(img, lines=[]):
     fig = plt.figure(figsize=(12,16))
     ax = plt.axes()
