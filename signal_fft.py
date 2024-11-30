@@ -322,30 +322,84 @@ def calculate_slope_and_intercept(x1, y1, x2, y2):
         b = y1 - a * x1
         return a, b
 
-to_remove = set()
-for i in range(len(lines)):
-    x1, y1, x2, y2 = lines[i][0]
-    max_i = max(x1, x2)
-    min_i = min(x1, x2)
-    a, b = calculate_slope_and_intercept(x1, y1, x2, y2)
-    areas = []
-    for j in range(i + 1, len(lines)):
-        x3, y3, x4, y4 = lines[j][0]
-        c, d = calculate_slope_and_intercept(x3, y3, x4, y4)
-        max_j = max(x3, x4)
-        min_j = min(x3, x4)
-        max_x = min(max_i, max_j)
-        min_x = max(min_i, min_j)
-        # TODO: check if lines intersect and when they do
-        # cut the lines in the intersection point P
-        # and calculate between <min;P> and <P;max>
-        areas.append(calc_area(a, b, c, d, min_x, max_x))
-    # TODO: for lines that are closer than threshold T,
-    # remove the line that is shorter (IDEA: maybe merge the lines?)
-    # areas = [area for area in areas if area < T]
-    # to_remove.add(...)
+def line_intersection(p1, p2, p3, p4):
+    """
+    Find the intersection point of two line segments (p1, p2) and (p3, p4).
 
-lines = np.delete(lines, to_remove, axis=1)
+    Parameters:
+    p1, p2: Tuples representing the endpoints of the first segment (x1, y1), (x2, y2)
+    p3, p4: Tuples representing the endpoints of the second segment (x3, y3), (x4, y4)
+
+    Returns:
+    A tuple (x, y) representing the intersection point or None if there is no intersection.
+    """
+
+    x1, y1 = p1
+    x2, y2 = p2
+    x3, y3 = p3
+    x4, y4 = p4
+
+    # Calculate the determinants
+    denom = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4)
+
+    # Check if lines are parallel
+    if denom == 0:
+        return None  # Lines are parallel or collinear
+
+    # Calculate intersection point
+    t = ((x1 - x3) * (y3 - y4) - (y1 - y3) * (x3 - x4)) / denom
+    u = -((x1 - x2) * (y1 - y3) - (y1 - y2) * (x1 - x3)) / denom
+
+    # Check if the intersection point is within both segments
+    if 0 <= t <= 1 and 0 <= u <= 1:
+        intersect_x = x1 + t * (x2 - x1)
+        intersect_y = y1 + t * (y2 - y1)
+        return (intersect_x, intersect_y)
+
+    return None  # No intersection within the segments
+
+def remove_duplicates(lines, min_avg_distance):
+    to_remove = set()
+    for i in range(len(lines)):
+        x1, y1, x2, y2 = lines[i][0]
+        max_i = max(x1, x2)
+        min_i = min(x1, x2)
+        a, b = calculate_slope_and_intercept(x1, y1, x2, y2)
+        areas = []
+        for j in range(i + 1, len(lines)):
+            x3, y3, x4, y4 = lines[j][0]
+            c, d = calculate_slope_and_intercept(x3, y3, x4, y4)
+            max_j = max(x3, x4)
+            min_j = min(x3, x4)
+            max_x = min(max_i, max_j)
+            min_x = max(min_i, min_j)
+            if min_x >= max_x: # lines don't overlap
+                continue
+            intersection = line_intersection([x1, y1], [x2, y2], [x3, y3], [x4, y4])
+            if intersection is not None:
+                p, pval = intersection
+                min_y_i = a * min_x + b
+                min_y_j = c * min_x + d
+                if min_y_i > min_y_j:
+                    area = calc_area(a, b, c, d, min_x, p) / (p - min_x)
+                    area += calc_area(c, d, a, b, p, max_x) / (max_x - p)
+                else:
+                    area = calc_area(c, d, a, b, min_x, p) / (p - min_x)
+                    area += calc_area(a, b, c, d, p, max_x) / (max_x - p)
+                areas.append((j, area))
+            else:
+                areas.append((j, abs(calc_area(a, b, c, d, min_x, max_x)) / (max_x - min_x)))
+        for j, area in areas:
+            if area < min_avg_distance: # maybe merge instead of removing
+                x3, y3, x4, y4 = lines[j][0]
+                if abs(x1 - x2) > abs(x3 - x4):
+                    to_remove.add(j)
+                else:
+                    to_remove.add(i)
+
+    return np.delete(lines, list(to_remove), axis=0)
+
+lines = remove_duplicates(lines, 3)
 imshow(img_downsampled, lines)
 
 # %%
