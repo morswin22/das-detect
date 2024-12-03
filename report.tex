@@ -199,14 +199,53 @@ Also, we know that there shouldn't be any vertical lines (indicating no movement
 
 \end{figure}
 
-The algorithm has no issues with detecting thick and medium lines but has some troubles with highlighting short and faint lines. Thanks to noise filtering, even in the very noisy 3rd range most lines are correctly labeled.
+The algorithm demonstrates robust performance in detecting thick and medium lines, effectively identifying significant disturbances in the acoustic data. However, it encounters challenges when it comes to highlighting short and faint lines, which may be due to their subtlety in the signal amidst background noise. Despite these limitations, the implementation of noise filtering techniques proves advantageous, as it allows for accurate labeling of most lines even within the highly noisy third range of the dataset.
 
 \newpage
 \section{Other approaches}
-\todo{Show all the failed experiments as subfigures}
+\begin{figure}[!htbp]
+    \centering
+    \begin{subfigure}{0.45\textwidth}
+        \centering
+        \includegraphics[width=\linewidth]{otsu.png}
+        \caption{Filtering with OTSU}
+        \label{fig:otsu}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}{0.45\textwidth}
+        \centering
+        \includegraphics[width=\linewidth]{skeletonized.png}
+        \caption{Skeletonizing}
+        \label{fig:skeleton}
+    \end{subfigure}
 
-\section{Conclusion}
-The described algorithm proved to provide the best results. \todo{reiterate the algorithm}
+    \begin{subfigure}{0.45\textwidth}
+        \centering
+        \includegraphics[width=\linewidth]{keypoints.png}
+        \caption{Key points detection with FAST}
+        \label{fig:kp}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}{0.45\textwidth}
+        \centering
+        \includegraphics[width=\linewidth]{multi_line_regression.png}
+        \caption{Multi-line regression on key points}
+        \label{fig:multiline}
+    \end{subfigure}
+
+    \begin{subfigure}{0.45\textwidth}
+        \centering
+        \includegraphics[width=\linewidth]{hdbscan_kp.png}
+        \caption{Clustering key points with HDBSCAN}
+        \label{fig:hdbscan}
+    \end{subfigure}
+    \hfill
+    \begin{minipage}[b]{0.45\textwidth}
+        \section{Conclusion}
+        By processing acoustic signals captured from a fiber optic cable along a busy street, the algorithm employs techniques such as frequency filtering, image normalization, and line detection to accurately identify vehicular movements. The described algorithm proved to provide the best results.
+    \end{minipage}
+
+\end{figure}
 
 % \bibliographystyle{alpha}
 % \bibliography{sample}
