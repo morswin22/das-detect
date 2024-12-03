@@ -6,8 +6,10 @@ from datetime import datetime
 import pandas as pd
 import datetime
 import glob
+import cv2
 from matplotlib.colors import Normalize
-
+from scipy.integrate import quad # for integrating abs(f(x) - g(x))
+from sklearn.cluster import DBSCAN # for clustering lines
 
 def set_axis(x, no_labels = 7)->tuple[np.array, np.array]:
     """Sets the x-axis positions and labels for a plot.
@@ -27,12 +29,103 @@ def set_axis(x, no_labels = 7)->tuple[np.array, np.array]:
     x_labels = x[::step_x]
     return x_positions, x_labels
 
+def calculate_slope_and_intercept(x1, y1, x2, y2):
+    a = (y2 - y1) / (x2 - x1) if (x2 - x1) != 0 else float('inf')  # Handle vertical line
+    b = y1 - a * x1
+    return a, b
+
+def imshow(img, lines=[], lines_scale=np.ones(shape=(2,)), save=None):
+    fig = plt.figure(figsize=(12,16))
+    ax = plt.axes()
+
+    norm = Normalize(vmin=0, vmax=255, clip=True)
+
+    im = ax.imshow(img,interpolation='none',aspect='auto',norm=norm)
+
+    if lines is not None:
+        for i in range(0, len(lines)):
+            l = lines[i][0]
+            scaled_xs = l[0::2] * lines_scale[1]
+            scaled_ys = l[1::2] * lines_scale[0]
+            a, b = calculate_slope_and_intercept(scaled_xs[0], scaled_ys[0], scaled_xs[1], scaled_ys[1])
+            speed = float("inf") if a == 0 else 1/abs(a) * DX/DT * 3.6
+            if speed < 1 or speed > 200: # nobody would drive this fast or this slow
+                continue
+            scaled_xs = np.clip(scaled_xs, 0, img.shape[1] - 1)
+            scaled_ys = a * scaled_xs + b
+            ax.text(scaled_xs[0], scaled_ys[0], f"{round(speed, 2)} km/h", color="red", horizontalalignment="center", verticalalignment="top")
+            ax.plot(scaled_xs, scaled_ys, color="red")
+
+    plt.ylabel('time')
+    plt.xlabel('space [m]')
+
+    if save is None:
+        cax = fig.add_axes([ax.get_position().x1+0.06,ax.get_position().y0,0.02,ax.get_position().height])
+        plt.colorbar(im, cax=cax)
+    x_positions, x_labels = set_axis(df.columns)
+    ax.set_xticks(x_positions, np.round(x_labels))
+    y_positions, y_labels = set_axis(df.index.time)
+    ax.set_yticks(y_positions, y_labels)
+    if save:
+        plt.tight_layout()
+        fig.savefig(save)
+    plt.show()
+
+from itertools import cycle, islice
+
+def imshow_downsampled(img, lines=[], labels=[], save=None):
+    aspect = img.shape[1] / img.shape[0]
+    fig = plt.figure(figsize=(12 * aspect, 12))
+    ax = plt.axes()
+
+    norm = Normalize(vmin=0, vmax=255, clip=True)
+
+    im = ax.imshow(img,interpolation='none',aspect='auto', norm=norm)
+
+    if lines is not None and len(lines) > 0:
+        if len(labels) < len(lines):
+            labels = (np.ones(shape=(len(lines),)) * -1).astype(int)
+        colors = np.array(list(islice(cycle([
+            "#377eb8",
+            "#ff7f00",
+            "#4daf4a",
+            "#f781bf",
+            "#a65628",
+            "#984ea3",
+            "#999999",
+            # "#e41a1c",
+            "#dede00",
+        ]), int(max(labels) + 1),)))
+        # add red color for outliers (if any)
+        colors = np.append(colors, ["red"])
+
+        for l, label in zip(lines[:, 0], labels):
+            ax.plot([l[0], l[2]], [l[1], l[3]], color=colors[label])
+
+    plt.ylabel('time')
+    plt.xlabel('space')
+
+    if save is None:
+        cax = fig.add_axes([ax.get_position().x1+0.06,ax.get_position().y0,0.02,ax.get_position().height])
+        plt.colorbar(im, cax=cax)
+    if save:
+        plt.tight_layout()
+        fig.savefig(save)
+    plt.show()
+
 # %%
 DX = 5.106500953873407
 DT = 0.0016
 
+# 156053:
 FILE_START = "091052"
 FILE_END   = "091242"
+# 156042:
+# FILE_START = "090252"
+# FILE_END   = "090442"
+# Unassigned:
+# FILE_START = "093652"
+# FILE_END   = "093842"
 
 # %%
 path_out = 'data/'
@@ -53,260 +146,174 @@ index = pd.date_range(start=time_start, periods=len(data), freq=f'{DT}s')
 columns = np.arange(len(data[0])) * DX
 
 df = pd.DataFrame(data=data, index=index, columns=columns)
-df
 
-# %%
-fig = plt.figure(figsize=(12,16))
-ax = plt.axes()
-
-# This is an example transformation and should be converted to the proper algorithm
-df -= df.mean()
-df = np.abs(df)
-low, high = np.percentile(df, [3, 99])
-norm = Normalize(vmin=low, vmax=high, clip=True)
-
-im = ax.imshow(df,interpolation='none',aspect='auto',norm=norm)
-plt.ylabel('time')
-plt.xlabel('space [m]')
-
-cax = fig.add_axes([ax.get_position().x1+0.06,ax.get_position().y0,0.02,ax.get_position().height])
-plt.colorbar(im, cax=cax)
-x_positions, x_labels = set_axis(df.columns)
-ax.set_xticks(x_positions, np.round(x_labels))
-y_positions, y_labels = set_axis(df.index.time)
-ax.set_yticks(y_positions, y_labels)
-plt.show()
-
-# %%
-from matplotlib.backend_bases import RendererBase
-
-img_rgba, offset_x, offset_y, transform = im.make_image(RendererBase)
-img_rgba
-
-# %%
-import cv2
-# skimage, PIL
-
-def imshow(image):
-    cv2.imshow('ImageWindow', image)
-    cv2.waitKey()
-    cv2.destroyAllWindows()
-
-img_bgr = cv2.cvtColor(img_rgba, cv2.COLOR_RGBA2BGR)
-imshow(img_bgr)
-
-# %%
-# grayscale
-img = cv2.cvtColor(img_rgba, cv2.COLOR_RGBA2GRAY)
+img = np.array(df)
+img -= img.mean()
+img = np.abs(img)
+low, high = np.percentile(img, [3, 99])
+img = np.clip(img, low, high)
+img -= img.min()
+img *= 255.0 / img.max()
+img = img.astype(np.uint8)
 imshow(img)
 
 # %%
-plt.hist(img.reshape(-1), bins=50)
-plt.show()
+def masked_norm(fft, mask):
+    filtered_fft = fft * mask.astype(int)
+    filtered_img = np.fft.ifft2(filtered_fft).real
+    norm_img = np.abs(filtered_img - filtered_img.mean())
+    thold = np.percentile(norm_img, 99)
+    norm_img = np.minimum(norm_img, thold)
+    norm_img -= norm_img.min()
+    norm_img *= 255.0 / norm_img.max()
+    return norm_img.astype(np.uint8)
+
+fft = np.fft.fft2(np.array(df))
+
+frequencies_x = np.fft.fftfreq(img.shape[1], DX)
+frequencies_y = np.fft.fftfreq(img.shape[0], DT)
+
+frequencies_x_mesh, frequencies_y_mesh = np.meshgrid(frequencies_x, frequencies_y)
+frequencies = np.sqrt(frequencies_x_mesh**2 + frequencies_y_mesh**2)
+
+frequencies.min(), frequencies.max()
 
 # %%
-img[img <= 70] = 0
-imshow(img)
+img_norm = masked_norm(fft, (frequencies >= 40) & (frequencies <= 60))
+imshow(img_norm, save="filtered_and_normalised.png")
 
 # %%
-def proper_closing(img, struct):
-    img_close = cv2.morphologyEx(img, cv2.MORPH_CLOSE, struct)
-    img_open = cv2.morphologyEx(img_close, cv2.MORPH_OPEN, struct)
-    img_close2 = cv2.morphologyEx(img_open, cv2.MORPH_CLOSE, struct)
-    return np.minimum(img, img_close2)
+def create_frequency_mask(shape, freq_min, freq_max):
+    rows, cols = shape
+    center_row, center_col = rows // 2, cols // 2
+    Y, X = np.ogrid[:rows, :cols]
+    dist_from_center = np.sqrt((X - center_col)**2 + (Y - center_row)**2)
 
-struct = np.ones([5, 5], np.uint8)
-img_Q = proper_closing(img, struct)
+    mask = np.logical_and(freq_min <= dist_from_center, dist_from_center <= freq_max)
+    return mask.astype(np.float32)
 
-imshow(np.concatenate([img, img_Q], 1))
+fft = np.fft.fft2(img_norm)
+fshift = np.fft.fftshift(fft)
 
-# %%
-img_Q_blurred = cv2.blur(img_Q, (10, 10))
+mask_1 = create_frequency_mask(img_norm.shape, 1, 32)
+mask_2 = create_frequency_mask(img_norm.shape, 1, 64)
 
-imshow(np.concatenate([img_Q, img_Q_blurred], 1))
+mask_1_fshift = mask_1 * fshift
+mask_2_fshift = mask_2 * fshift
+both_pass_fshift = (mask_1_fshift + mask_2_fshift)
 
-# %%
-img_binary = img_Q_blurred.copy()
-img_binary[img_binary.nonzero()] = 1
-img_binary = img_binary.astype(bool)
+f_ishift = np.fft.ifftshift(both_pass_fshift)
+both_pass_fshift_img = np.fft.ifft2(f_ishift).real
 
-from scipy.ndimage import binary_hit_or_miss
-
-def thinning(img, struct):
-    hit, miss = struct.copy(), struct.copy()
-    hit[struct == -1] = 0
-    miss[struct == 1] = 0
-    miss[struct == -1] = 1
-    return np.logical_and(img, np.logical_not(binary_hit_or_miss(img, hit, miss)))
-
-def skeletonize(img):
-    s1 = np.array([[-1, -1, -1], [0, 1, 0], [1, 1, 1]])
-    s2 = np.array([[0, -1, -1], [1, 1, -1], [0, 1, 0]])
-
-    result = img.copy()
-    while True:
-      temp = result.copy()
-      for i in range(4):
-        temp = np.rot90(thinning(thinning(temp, s1), s2))
-      if np.all(temp == result):
-        break
-      result = temp.copy()
-
-    return result
-
-
-skeleton = skeletonize(img_binary)
-
-def show_binary(a):
-    plt.tick_params(
-        axis="both",
-        which="both",
-        bottom=False,
-        top=False,
-        labelbottom=False,
-        labelleft=False,
-        left=False,
-        right=False,
-    )
-    plt.imshow(a, cmap="gray")
-    plt.show()
-
-show_binary(skeleton)
+img_filtered = both_pass_fshift_img.clip(0, 255).astype(np.uint8)
+imshow(img_filtered, save="low_filtered.png")
 
 # %%
-skeleton_img = (skeleton * 255).astype(np.uint8)
-imshow(skeleton_img)
+img_downsampled = cv2.resize(img_filtered, (256, 256), interpolation=cv2.INTER_AREA)
+imshow_downsampled(img_downsampled, save="downsampled.png")
 
 # %%
-descriptor = cv2.ORB_create()
-
-kp, desc = descriptor.detectAndCompute(skeleton_img, None)
-
-imshow(cv2.drawKeypoints(skeleton_img, kp, None, flags=cv2.DRAW_MATCHES_FLAGS_DEFAULT))
-imshow(cv2.drawKeypoints(img_bgr, kp, None, flags=cv2.DRAW_MATCHES_FLAGS_DEFAULT))
+lines = cv2.HoughLinesP(img_downsampled, rho=1, theta=np.pi/180, threshold=100, lines=None, minLineLength=4, maxLineGap=128)
+imshow_downsampled(img_downsampled, lines, save="hough.png")
 
 # %%
-descriptor = cv2.SIFT_create()
+def line_function(line):
+    """Returns a function representing a line segment defined by (x1, y1, x2, y2)."""
+    x1, y1, x2, y2 = line
+    slope = (y2 - y1) / (x2 - x1)
+    intercept = y1 - slope * x1
 
-kp, desc = descriptor.detectAndCompute(skeleton_img, None)
+    def f(x):
+        return slope * x + intercept
 
-imshow(cv2.drawKeypoints(skeleton_img, kp, None, flags=cv2.DRAW_MATCHES_FLAGS_DEFAULT))
-imshow(cv2.drawKeypoints(img_bgr, kp, None, flags=cv2.DRAW_MATCHES_FLAGS_DEFAULT))
+    return f
 
-# %%
-descriptor = cv2.FastFeatureDetector_create()
+def average_distance(line1, line2):
+    """Calculates the average distance between two lines over their overlapping interval."""
+    f1 = line_function(line1)
+    f2 = line_function(line2)
 
-kp = descriptor.detect(skeleton_img, None)
+    # Determine overlapping interval
+    x1_min = min(line1[0], line1[2])
+    x1_max = max(line1[0], line1[2])
 
-imshow(cv2.drawKeypoints(skeleton_img, kp, None, flags=cv2.DRAW_MATCHES_FLAGS_DEFAULT))
-imshow(cv2.drawKeypoints(img_bgr, kp, None, flags=cv2.DRAW_MATCHES_FLAGS_DEFAULT))
+    x2_min = min(line2[0], line2[2])
+    x2_max = max(line2[0], line2[2])
 
-# %%
-# Data
-kp_data = {"x":[], "y":[]}
-for key_point in kp:
-    kp_data["x"].append(key_point.pt[0])
-    kp_data["y"].append(key_point.pt[1])
+    overlap_min = max(x1_min, x2_min)
+    overlap_max = min(x1_max, x2_max)
 
-# Convert data to DataFrame for easier manipulation
-kp_df = pd.DataFrame(kp_data)
+    if overlap_min >= overlap_max:
+        return 100000#float("inf")  # No overlap
 
-# %%
-from scipy import stats
+    # Define the integrand for the integral of |f(x) - g(x)|
+    def integrand(x):
+        return abs(f1(x) - f2(x))
 
-fig, axs = plt.subplots(1, 2, sharex=True, tight_layout=True)
+    # Calculate integral over the overlapping interval
+    integral_value, _ = quad(integrand, overlap_min, overlap_max)
 
-axs[0].hist(kp_df["y"], bins=50)
+    # Calculate average distance
+    average_distance_value = integral_value / (overlap_max - overlap_min)
 
-x = np.arange(kp_df["y"].min(), kp_df["y"].max(), 0.1)
-y = stats.gaussian_kde(kp_df["y"])(x)
-axs[1].plot(x, y)
+    return average_distance_value
 
-plt.show()
+def compute_distance_matrix(lines):
+    """Computes the average distance matrix for a set of lines."""
+    n = len(lines)
+    distance_matrix = np.zeros((n, n))
 
-# %%
-def cvconv(f, g):
-    # padding
-    pad_v = (g.shape[0] - 1) // 2
-    pad_h = (g.shape[1] - 1) // 2
-    fb = cv2.copyMakeBorder(f, pad_v, pad_v, pad_h, pad_h, cv2.BORDER_CONSTANT, 0)
+    for i in range(n):
+        for j in range(i + 1, n):
+            dist = average_distance(lines[i], lines[j])
+            distance_matrix[i][j] = dist
+            distance_matrix[j][i] = dist  # Symmetric matrix
 
-    g = np.flip(g)
+    return distance_matrix
 
-    # convolution
-    fg_cv = cv2.filter2D(fb.astype(g.dtype), -1, g)
+def cluster_lines(lines, eps=0.5, min_samples=2):
+    """Clusters lines using DBSCAN based on their average distances."""
+    distance_matrix = compute_distance_matrix(lines)
 
-    # remove padding from result (opencv does not do this automatically)
-    return fg_cv[pad_v : fb.shape[0] - pad_v, pad_h : fb.shape[1] - pad_h]
+    # Use DBSCAN with precomputed distances
+    clustering_model = DBSCAN(eps=eps, min_samples=min_samples, metric='precomputed')
 
-der = np.array([[-1, 1]], np.float32)
+    labels = clustering_model.fit_predict(distance_matrix)
 
-y_hat = cvconv(y[np.newaxis], der) / (x[1] - x[0])
-y_hat = y_hat[0]
+    return labels
 
-where = abs(y_hat) < 0.000000003
-extremes = x[where]
-extremes
-
-# %%
-extremes = extremes[y_hat[where] <= 0]
-extremes
-
-# %%
-from sklearn.neighbors import KernelDensity
-from scipy.signal import argrelextrema
-
-a = extremes.reshape(-1, 1)
-kde = KernelDensity(kernel='gaussian', bandwidth=3).fit(a)
-s = np.linspace(a.min(), a.max())
-e = kde.score_samples(s.reshape(-1,1))
-
-mi = argrelextrema(e, np.less)[0]
-
-segments = [a[(a >= left) * (a <= right)] for left, right in zip((s[0],) + tuple(s[mi]), tuple(s[mi]) + (s[-1],))]
-segments
+labels = cluster_lines(lines[:, 0], eps=4.5, min_samples=2)
+imshow_downsampled(img_downsampled, lines, labels, save="clustered.png")
 
 # %%
-initial_guess_ls = np.array([[segment.mean(), 0] for segment in segments]).reshape(-1)
-initial_guess_ls
+def merge_lines_in_clusters(lines, labels):
+    """Merges lines that are in the same cluster."""
+    unique_labels = set(labels)
+    merged_lines = []
+    merged_lines.extend(lines[labels == -1])
+
+    for label in unique_labels:
+        if label == -1:
+            continue  # Skip noise points
+
+        # Get indices of lines in this cluster
+        cluster_lines_indices = np.where(labels == label)[0]
+
+        # Average coordinates of lines in this cluster
+        if len(cluster_lines_indices) > 0:
+            avg_x1 = np.mean(lines[cluster_lines_indices][:, 0])
+            avg_y1 = np.mean(lines[cluster_lines_indices][:, 1])
+            avg_x2 = np.mean(lines[cluster_lines_indices][:, 2])
+            avg_y2 = np.mean(lines[cluster_lines_indices][:, 3])
+
+            merged_line = [avg_x1, avg_y1, avg_x2, avg_y2]
+            merged_lines.append(merged_line)
+
+    return np.array(merged_lines)
+
+merged_lines = merge_lines_in_clusters(lines[:, 0], labels).reshape(-1, 1, 4).astype(int)
+imshow_downsampled(img_downsampled, merged_lines, save="merged.png")
 
 # %%
-from scipy.optimize import minimize
-
-# Parameters
-num_lines = len(segments)
-
-# Define the objective function for Least Squares Regression with multiple lines
-def least_squares(params):
-    a = params[:2 * num_lines].reshape(num_lines, -1)   # Coefficients for each line
-    residuals = []
-
-    for i in range(len(kp_df)):
-        line_fit = np.array([a[j][0] + a[j][1] * kp_df['x'][i] for j in range(num_lines)])
-        residuals.append(np.min(np.abs(kp_df['y'][i] - line_fit)))   # Min residual among lines
-
-    return np.sum(np.square(residuals))
-
-# Optimize using minimize from scipy
-result_ls = minimize(least_squares, initial_guess_ls)
-coefficients_ls = result_ls.x.reshape(num_lines, -1)
-
-# Plotting the results
-plt.figure(figsize=(9,12))
-plt.scatter(kp_df['x'], kp_df['y'], color='blue', label='Data Points')
-
-# Plotting Least Squares Lines
-x_values = np.linspace(kp_df['x'].min(), kp_df['x'].max(), num=100)
-for i in range(num_lines):
-    ls_y_values = coefficients_ls[i][0] + coefficients_ls[i][1] * x_values
-    plt.plot(x_values, ls_y_values, label=f'Least Squares Line {i+1}', linewidth=2)
-
-# Adding labels and title
-plt.title('Multiple-Line Regression: Least Squares')
-plt.xlabel('X Values')
-plt.ylabel('Y Values')
-plt.ylim(kp_df['y'].min() - 1, kp_df['y'].max() + 1)
-plt.legend()
-plt.grid()
-plt.show()
+imshow(img, merged_lines, np.array(img.shape) / np.array(img_downsampled.shape), save="result.png")
 
