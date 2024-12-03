@@ -45,6 +45,8 @@ def imshow(img, lines=[], lines_scale=np.ones(shape=(2,)), save=None):
     if lines is not None:
         for i in range(0, len(lines)):
             l = lines[i][0]
+            if l[0] == l[2]: # no movement
+                continue
             scaled_xs = l[0::2] * lines_scale[1]
             scaled_ys = l[1::2] * lines_scale[0]
             a, b = calculate_slope_and_intercept(scaled_xs[0], scaled_ys[0], scaled_xs[1], scaled_ys[1])
@@ -230,6 +232,9 @@ def line_function(line):
 
 def average_distance(line1, line2):
     """Calculates the average distance between two lines over their overlapping interval."""
+    if line1[0] == line1[2] or line2[0] == line2[2]:
+        return 100000 # No point in clustering these lines
+
     f1 = line_function(line1)
     f2 = line_function(line2)
 
